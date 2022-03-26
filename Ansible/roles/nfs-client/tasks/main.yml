@@ -1,0 +1,13 @@
+---
+# Setup/install tasks.
+- include_tasks: setup-RedHat.yml
+  when: ansible_os_family == 'RedHat'
+
+- include_tasks: setup-Debian.yml
+  when: ansible_os_family == 'Debian'
+
+- name: Insert a line at the end of a file.
+  lineinfile:
+    path: /etc/fstab
+    line: "{{ master_ip }}:/mnt /mnt  nfs      defaults    0       0"
+  notify: remount

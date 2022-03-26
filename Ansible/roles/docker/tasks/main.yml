@@ -1,0 +1,37 @@
+---
+# author: aseleem
+
+- name: Ubuntu install Docker
+  include_tasks: docker-ubuntu.yml
+  when: ansible_distribution == 'Ubuntu'
+
+- name: Ubuntu install Docker
+  include_tasks: docker-debian.yml
+  when: ansible_distribution == 'Debian'
+
+- name: Ensure facts directory exists
+  file:
+    path: "/etc/ansible/facts.d"
+    state: directory
+    owner: "root"
+    group: "root"
+
+- name: Create /etc/docker
+  file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+
+- name: Set docker daemon configuration
+  copy:
+    content: "{{ docker_daemon_json | to_nice_json }}"
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: 0644
+  notify: restart docker
+
+- name: restart docker
+  service:
+    name: docker
+    state: restarted

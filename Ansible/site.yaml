@@ -1,0 +1,33 @@
+---
+# Docker is installed by dependencies
+# - hosts: kube-cluster
+#   gather_facts: yes
+#   become: yes
+#   vars_files:
+#     - group_vars/all.yml
+#     - group_vars/kube-cluster.yml
+#   roles:
+#     - { role: docker, tags: docker }
+
+
+- hosts: master
+  gather_facts: yes
+  become: yes
+  vars_files:
+    - group_vars/all.yml
+    - group_vars/kube-cluster.yml
+  roles:
+    - { role: kubernetes/master, tags: master }
+    - { role: cni, tags: cni }
+    - { role: nfs, tags: nfs }
+    - { role: helm, tags: helm }
+
+- hosts: node
+  gather_facts: yes
+  become: yes
+  vars_files:
+    - group_vars/all.yml
+    - group_vars/kube-cluster.yml
+  roles:
+    - { role: kubernetes/node, tags: node }
+    - { role: nfs-client, tags: nfs-client }

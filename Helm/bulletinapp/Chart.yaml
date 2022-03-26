@@ -1,0 +1,10 @@
+apiVersion: v2
+appVersion: latest
+dependencies: []
+description: Bulletin Board App.
+keywords: []
+maintainers: []
+name: bulletinapp
+sources: []
+type: application
+version: 2.2.13

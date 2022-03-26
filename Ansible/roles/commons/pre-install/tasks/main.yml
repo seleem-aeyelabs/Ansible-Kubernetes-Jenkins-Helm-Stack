@@ -1,0 +1,130 @@
+---
+
+- name: Install Kubernetes packages
+  include_tasks: pkg.yml
+
+- name: Disable system swap
+  shell: "swapoff -a"
+
+- name: Remove current swaps from fstab
+  lineinfile:
+    dest: /etc/fstab
+    regexp: '(?i)^([^#][\S]+\s+(none|swap)\s+swap.*)'
+    line: '# \1'
+    backrefs: yes
+    state: present
+
+- name: Disable swappiness and pass bridged IPv4 traffic to iptable's chains
+  sysctl:
+    name: "{{ item.name }}"
+    value: "{{ item.value }}"
+    state: present
+  with_items:
+    - { name: 'vm.swappiness', value: '0' }
+    - { name: 'net.bridge.bridge-nf-call-iptables', value: '1' }
+
+# firewall config
+
+- name: Disable UFW firewall
+  ufw:
+    state: disabled
+  ignore_errors: yes
+- name: Remove UFW firewall
+  apt:
+    name: ufw
+    state: absent
+    purge: yes
+
+- name: Install ip/arp/eb-tables packages
+  apt:
+    pkg:
+      - iptables
+      - arptables
+      - ebtables
+    state: present
+    update_cache: true
+
+- name: Change iptables/ip6tables/arptables/ebtables alternative
+  command: "{{ item }}"
+  loop:
+    - update-alternatives --set iptables /usr/sbin/iptables-legacy
+    - update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
+    - update-alternatives --set arptables /usr/sbin/arptables-legacy
+    - update-alternatives --set ebtables /usr/sbin/ebtables-legacy
+  ignore_errors: yes
+
+- name: Install Firewalld
+  apt:
+    name: firewalld
+    state: present
+
+- name: "Permit traffic in default zone on port {{item.port}}/{{item.proto}}"
+  firewalld:
+    permanent: yes
+    immediate: yes
+    port: "{{item.port}}/{{item.proto}}"
+    state: "{{item.state}}"
+    zone: "{{item.zone}}"
+  with_items:
+   - {port: "2049", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "6443", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "2379-2380", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "10250", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "10259", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "10257", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "30000-32767", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "8285", proto: "udp", state: "enabled", zone: "public" }
+   - {port: "8472", proto: "udp", state: "enabled", zone: "public" }
+   - {port: "8285", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "8472", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "5432", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "5432", proto: "udp", state: "enabled", zone: "public" }
+   - {port: "6783", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "6783", proto: "udp", state: "enabled", zone: "public" }
+   - {port: "6784", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "6784", proto: "udp", state: "enabled", zone: "public" }
+   - {port: "6781", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "6781", proto: "udp", state: "enabled", zone: "public" }
+   - {port: "6782", proto: "tcp", state: "enabled", zone: "public" }
+   - {port: "6782", proto: "udp", state: "enabled", zone: "public" }
+
+## For DNS
+- name: Add masquerade in default zone
+  firewalld:
+    masquerade: yes
+    state: enabled
+    permanent: yes
+    zone: public
+
+- name: Add firewalld rules
+  command: "{{ item }}"
+  loop:
+    - firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD_direct 0 -i weave -o weave -j ACCEPT
+    - firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1 -i flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
+    - firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1 -o flannel.1 -j ACCEPT -m comment --comment "flannel subnet"
+    - firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1 -i cni0 -j ACCEPT -m comment --comment "flannel subnet"
+    - firewall-cmd --permanent --direct --add-rule ipv4 filter FORWARD 1 -o cni0 -j ACCEPT -m comment --comment "flannel subnet"
+    - firewall-cmd --reload
+  ignore_errors: yes
+
+- name: Restart FirewallD
+  ansible.builtin.service:
+    name: firewalld
+    state: restarted
+
+- name: Create service drop-in directory
+  file:
+    path: /etc/systemd/system/kubelet.service.d/
+    state: directory
+    owner: "{{ ansible_user | default(ansible_user_id) }}"
+    group: "{{ ansible_user | default(ansible_user_id) }}"
+    mode: 0755
+
+- name: Copy kubeadm conf to drop-in directory
+  template: src=20-extra-args.conf.j2 dest=/etc/systemd/system/kubelet.service.d/20-extra-args.conf
+
+- name: Reload kubelet daemon
+  systemd:
+    name: kubelet
+    daemon_reload: yes
+    enabled: yes

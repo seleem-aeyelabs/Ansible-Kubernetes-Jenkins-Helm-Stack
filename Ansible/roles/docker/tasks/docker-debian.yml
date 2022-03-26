@@ -1,0 +1,36 @@
+---
+- name: Ensure old versions of Docker are not installed.
+  apt: "name={{ item }} state=absent"
+  with_items: "{{ docker_old }}"
+
+- name: Ensure dependencies are installed.
+  apt: "name={{ item }} state=present  update_cache=yes"
+  with_items: "{{ docker_packages }}"
+
+- name: Add Docker GPG apt Key
+  apt_key:
+    url: https://download.docker.com/linux/debian/gpg
+    state: present
+
+# Should be enhanced by do NOT hardcode the repo
+- name: Add Docker Repository
+  apt_repository:
+    repo: "deb https://download.docker.com/linux/debian buster stable"
+    state: present
+
+- name: Ensures /etc/docker dir exists
+  file: path=/etc/docker state=directory
+
+# Replaced by copy in main
+# - name: Configure docker startup parameters.
+#   template:
+#     src: daemon.json.j2
+#     dest: "/etc/docker/daemon.json"
+
+- name: Install Docker
+  apt: "name={{ item }} state=latest update_cache=yes"
+  with_items: "{{ docker_ce_packages }}"
+
+- name: Ensure docker is started and enabled at boot.
+  systemd: name=docker state=started enabled=yes
+  when: docker_start
